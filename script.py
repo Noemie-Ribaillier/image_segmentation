@@ -140,7 +140,8 @@ processed_image_ds = image_ds.map(preprocess)
 
 def conv_block(inputs=None, n_filters=32, dropout_prob=0, max_pooling=True):
     """
-    Convolutional downsampling block
+    Convolutional downsampling block: Conv2D (3x3) ReLU -> Conv2D (3x3) ReLU
+    then ready for the skip connection or MaxPool2D to further the downsampling step
     
     Arguments:
         inputs -- Input tensor
@@ -191,8 +192,8 @@ def conv_block(inputs=None, n_filters=32, dropout_prob=0, max_pooling=True):
 
 def upsampling_block(expansive_input, contractive_input, n_filters=32):
     """
-    Convolutional upsampling block
-    
+    Convolutional upsampling block: Conv2DTranspose (3,3) + contractive_input (from the downsampling step)
+    then Conv2D (3,3) ReLU -> Conv2D (3,3) ReLU     
     Arguments:
         expansive_input -- Input tensor from previous layer
         contractive_input -- Input tensor from previous skip layer
