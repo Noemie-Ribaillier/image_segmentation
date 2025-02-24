@@ -1,12 +1,13 @@
 ##################################################################################################
 #####                                                                                        #####
 #####                               SEMANTIC IMAGE SEGMENTATION                              #####
-#####                                       2025-02-18                                       #####
+#####                                 Created on: 2025-02-18                                 #####
+#####                                  Updated on 2025-02-23                                 #####
 #####                                                                                        #####
 ##################################################################################################
 
 ##################################################################################################
-#####                                    IMPORT LIBRARIES                                    #####
+#####                                        PACKAGES                                        #####
 ##################################################################################################
 
 # To clear the environment
@@ -17,10 +18,13 @@ import numpy as np
 import setuptools.dist
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Dropout, Conv2DTranspose, concatenate
-import os
 import pandas as pd
 import imageio
 import matplotlib.pyplot as plt
+
+# Set up the right directory
+import os
+os.chdir('C:/Users/Admin/Documents/Python Projects/image_segmentation')
 
 
 ##################################################################################################
@@ -28,10 +32,10 @@ import matplotlib.pyplot as plt
 ##################################################################################################
 
 # Set up the paths (on one side, the raw pictures and on the other side the masks [semantic image segmentation])
-image_path = 'C:/Users/Admin/Documents/Python Projects/image_segmentation/data/CameraRGB/'
-mask_path = 'C:/Users/Admin/Documents/Python Projects/image_segmentation/data/CameraMask/'
+image_path = 'data/CameraRGB/'
+mask_path = 'data/CameraMask/'
 
-# To list all the entries (here, names) in a specified directory (because images and masks have same names, splitted per folder)
+# List all the entries (here, names) in a specified directory (because images and masks have same names, splitted per folder)
 image_list_orig = os.listdir(image_path)
 
 # List of paths of all images/masks
@@ -43,7 +47,7 @@ mask_list = [mask_path+i for i in image_list_orig]
 #####                                    CHECK SOME DATA                                     #####
 ##################################################################################################
 
-# Determine and image and its mask
+# Randomly get an image and its mask
 N = 21
 img = imageio.imread(image_list[N])
 mask = imageio.imread(mask_list[N])
@@ -75,6 +79,7 @@ for path in zip(image_list_ds.take(3), mask_list_ds.take(3)):
 image_filenames = tf.constant(image_list)
 masks_filenames = tf.constant(mask_list)
 
+# tf.data.Dataset.from_tensor_slices() function takes these two lists and constructs a dataset where each element is a pair of (image, mask) files
 dataset = tf.data.Dataset.from_tensor_slices((image_filenames, masks_filenames))
 
 # Get the first example of dataset
@@ -101,7 +106,7 @@ def process_path(image_path, mask_path):
     return img, mask
 
 # We create a function to resize all the images and masks (where channels is the same as in the original image)
-# nearest mthode refers to assigning each pixel in the output image the value of the nearest pixel from the input image
+# nearest method refers to assigning each pixel in the output image the value of the nearest pixel from the input image
 def preprocess(image, mask):
     input_image = tf.image.resize(image, (96, 128), method='nearest')
     input_mask = tf.image.resize(mask, (96, 128), method='nearest')
@@ -115,7 +120,7 @@ processed_image_ds = image_ds.map(preprocess)
 
 
 ##################################################################################################
-#####                                          U-NET                                         #####
+#####                                       U-NET MODEL                                      #####
 ##################################################################################################
 
 ##################################################################################################
@@ -268,10 +273,10 @@ def unet_model(input_size=(96, 128, 3), n_filters=32, n_classes=23):
 
 
 ##################################################################################################
-#####                                  SET MODEL DIMENSIONS                                  #####
+#####                     SET IMAGE DIMENSIONS AND CERATE THE UNET MODEL                     #####
 ##################################################################################################
 
-# Set model dimensions
+# Set image dimensions
 img_height = 96
 img_width = 128
 num_channels = 3
@@ -287,7 +292,7 @@ unet.summary()
 #####                                      LOSS FUNCTION                                     #####
 ##################################################################################################
 
-# We use adam optimizer and sparse categorical crossentropy as loss
+# We use Adam optimizer and sparse categorical crossentropy as loss
 unet.compile(optimizer='adam',
              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
              metrics=['accuracy'])
@@ -333,10 +338,10 @@ VAL_SUBSPLITS = 5
 BUFFER_SIZE = 500
 BATCH_SIZE = 32
 
-# We fix the seed to get stable results (remove the random factor)
+# Fix the seed to get stable results (it removes the random factor)
 tf.keras.utils.set_random_seed(1)
 
-# We use enable_op_determinism to get the same outputs even after running several times (with the same inputs on the same hardware)
+# Use enable_op_determinism to get the same outputs even after running several times (with the same inputs on the same hardware)
 tf.config.experimental.enable_op_determinism()
 
 # cache(): it caches the data in memory after it has been processed for the first time
@@ -345,26 +350,15 @@ tf.config.experimental.enable_op_determinism()
 # batch(): it groups the dataset into batches of size BATCH_SIZE to process multiple samples at once (to have more efficient computation and memory usage)
 train_dataset = processed_image_ds.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
 
-# We train the model, we use the train dataset and run it EPOCHS times
+# Train the model, we use the train dataset and run it EPOCHS times
 model_history = unet.fit(train_dataset, epochs=EPOCHS)
-
-
-##################################################################################################
-#####                                 CREATE PREDICTED MASKS                                 #####
-##################################################################################################
-
-# We create a function to determine the class based on the max probability
-def create_mask(pred_mask):
-    pred_mask = tf.argmax(pred_mask, axis=-1)
-    pred_mask = pred_mask[..., tf.newaxis]
-    return pred_mask[0]
 
 
 ##################################################################################################
 #####                                   PLOT MODEL ACCURACY                                  #####
 ##################################################################################################
 
-# We plot the model accuracy (per epoch)
+# Plot the model accuracy (per epoch)
 plt.plot(model_history.history["accuracy"])
 plt.xticks()
 plt.xlabel('Number of epoches')
@@ -377,7 +371,13 @@ plt.show()
 #####                                    SHOW PREDICTIONS                                    #####
 ##################################################################################################
 
-# We create a function to check our predicted masks against the true mask and the original input image
+# Create a function to determine the class based on the max probability
+def create_mask(pred_mask):
+    pred_mask = tf.argmax(pred_mask, axis=-1)
+    pred_mask = pred_mask[..., tf.newaxis]
+    return pred_mask[0]
+
+# Create a function to check our predicted masks against the true mask and the original input image
 def show_predictions(dataset=None, num=1):
     """
     Displays the first image of each of the num batches
@@ -390,5 +390,5 @@ def show_predictions(dataset=None, num=1):
         display([sample_image, sample_mask,
              create_mask(unet.predict(sample_image[tf.newaxis, ...]))])
 
-# We check our predicted mask against the true mask and the original input image for 6 images
+# Check our predicted mask against the true mask and the original input image for 6 images
 show_predictions(train_dataset, 6)
